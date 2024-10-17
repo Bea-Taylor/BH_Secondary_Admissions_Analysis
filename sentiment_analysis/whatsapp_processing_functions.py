@@ -51,6 +51,21 @@ def split_emoji(text):
     return emoji_list
 
 
+def british_dates(df):
+    "Converts the dates to British format"
+    df['Date'] = pd.to_datetime(df['Date'], format='%d/%m/%Y', errors='coerce')
+    # formatted_dates = []
+    # for old_date in df['Date']:
+    #     dt_obj = old_date
+    #     new_date = """{}/{}/{}""".format(dt_obj.day,dt_obj.month,dt_obj.year)
+    #     formatted_dates.append(new_date)
+    # df['Date'] = formatted_dates
+
+    df['Time'] = pd.to_datetime(df['Time'], format='mixed').dt.time
+
+    return df
+
+
 def whatsapptxt_to_df(conversation):
     "Converts the whatsapp text file to a pandas dataframe"
     data = []
@@ -73,18 +88,31 @@ def whatsapptxt_to_df(conversation):
                 messageBuffer.append(line)
 
     df = pd.DataFrame(data, columns=['Date', 'Time', 'Author', 'Message'])
-    df['Date'] = pd.to_datetime(df['Date'], format='%d/%m/%Y', errors='coerce')
-    df['Time'] = pd.to_datetime(df['Time'], format='mixed').dt.time
+    df = british_dates(df)
     df['emoji'] = df["Message"].apply(split_emoji)
-
+    df['Message_length'] = df['Message'].apply(lambda x: len(x))
     return df
 
 
 def extract_sentiment(df):
     "Extracts the sentiment from the messages and saves it in a new column"
-    classifier = pipeline("text-classification", model="j-hartmann/sentiment-roberta-large-english-3-classes", top_k=None)
+    classifier = pipeline("text-classification", model="j-hartmann/sentiment-roberta-large-english-3-classes", top_k=1, truncation=True)
     sentiment = classifier(list(df['Message']))
+    sentiment = [x for xs in sentiment for x in xs] # have to flatten the list
     sentiment_df = pd.DataFrame(sentiment)
     df = pd.concat([df, sentiment_df], axis=1)
 
     return df 
+
+
+def remove_standard_messages(df):
+    "Removes standard messages from the dataframe"
+    rep_messages = ['joined using this', 'added', 'message was deleted', 'changed the group description', 'attached', r'\d+ left']
+    for mess in rep_messages:
+        print(f'"{mess}" appears {len(df[df.Message.str.contains(mess)])} times')
+    
+    df_messages = df.copy()
+    for mess in rep_messages:
+        df_messages = df_messages[~df_messages.Message.str.contains(mess)]
+    
+    return df_messages
